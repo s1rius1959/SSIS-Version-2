@@ -38,7 +38,7 @@ class StudentSystem(QMainWindow):
         self.ui.SREFRESH.clicked.connect(self.StudentRefresh)
         self.ui.CREFRESH.clicked.connect(self.CollegeRefresh)
         self.ui.REFRESH.clicked.connect(self.ProgramRefresh)
-        self.ui.SLoad.clicked.connect(self.StudentsUpdate)
+
 
         self.ui.Sortbybox.currentIndexChanged.connect(self.FilterStudents)
         self.ui.Searchbybox.textChanged.connect(self.FilterStudents)
@@ -300,8 +300,7 @@ class StudentSystem(QMainWindow):
     def studentnameformat(self, name):
         return bool(re.match(r'^[a-zA-Z ]+$', name))
 
-    def StudentsUpdate(self):
-        self.LoadStudent()
+
     
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # COLLEGE METHODS
