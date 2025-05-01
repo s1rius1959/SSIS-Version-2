@@ -541,17 +541,33 @@ class StudentSystem(QMainWindow):
             QMessageBox.warning(self, "Error", "Please select a Program to edit.")
             return
 
-        program_code = self.ui.COLLEGETABLE_2.item(selected_row, 0).text()
+        old_program_code = self.ui.COLLEGETABLE_2.item(selected_row, 0).text()
 
-        self.ui.PrCodeBox.setText(program_code)
+        # Load current values into the input fields
+        self.ui.PrCodeBox.setText(old_program_code)
         self.ui.ProgNbox.setText(self.ui.COLLEGETABLE_2.item(selected_row, 1).text())
         self.ui.ccComboBox.setCurrentText(self.ui.COLLEGETABLE_2.item(selected_row, 2).text())
 
+        # Remove the program row from the database
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM programs WHERE code=?", (program_code,))
+        cursor.execute("DELETE FROM programs WHERE code=?", (old_program_code,))
         self.conn.commit()
 
         self.ui.COLLEGETABLE_2.removeRow(selected_row)
+
+        # Connect the Add button to update the students when new program is added
+        def update_students_with_new_code():
+            new_program_code = self.ui.PrCodeBox.text().strip()
+            if new_program_code and new_program_code != old_program_code:
+                cursor.execute("UPDATE students SET program_code=? WHERE program_code=?", 
+                            (new_program_code, old_program_code))
+                self.conn.commit()
+            # Disconnect after update to prevent duplicate binding
+            self.ui.AddProg.clicked.disconnect()
+            self.ui.AddProg.clicked.connect(self.AddProgram)
+
+        self.ui.AddProg.clicked.disconnect()
+        self.ui.AddProg.clicked.connect(lambda: [update_students_with_new_code(), self.AddProgram()])
 
     def DeleteProgram(self):
         selected_row = self.ui.COLLEGETABLE_2.currentRow()
