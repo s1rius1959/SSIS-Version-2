@@ -79,7 +79,7 @@ class StudentSystem(QMainWindow):
                 code TEXT PRIMARY KEY,
                 name TEXT,
                 college_code TEXT,
-                FOREIGN KEY (college_code) REFERENCES colleges(code)
+                FOREIGN KEY (college_code) REFERENCES colleges(code) ON UPDATE CASCADE ON DELETE CASCADE
             )
         """)
         cursor.execute("""
@@ -90,7 +90,7 @@ class StudentSystem(QMainWindow):
                 year_level TEXT,
                 gender TEXT,
                 program_code TEXT,
-                FOREIGN KEY (program_code) REFERENCES programs(code)
+                FOREIGN KEY (program_code) REFERENCES programs(code) ON UPDATE CASCADE ON DELETE CASCADE
             )
         """)
         self.conn.commit()
@@ -368,16 +368,35 @@ class StudentSystem(QMainWindow):
             QMessageBox.warning(self, "Error", "Please select a College to edit.")
             return
 
-        college_code = self.ui.COLLEGETABLE.item(selected_row, 0).text()
+        old_college_code = self.ui.COLLEGETABLE.item(selected_row, 0).text()
 
-        self.ui.AddCCodeBox.setText(college_code)
+        # Load existing values into input fields
+        self.ui.AddCCodeBox.setText(old_college_code)
         self.ui.CollegeNbox.setText(self.ui.COLLEGETABLE.item(selected_row, 1).text())
 
+        # Delete the old college record
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM colleges WHERE code=?", (college_code,))
+        cursor.execute("DELETE FROM colleges WHERE code=?", (old_college_code,))
         self.conn.commit()
 
         self.ui.COLLEGETABLE.removeRow(selected_row)
+
+        # Set up Add button to also update programs
+        def update_programs_with_new_college_code():
+            new_college_code = self.ui.AddCCodeBox.text().strip().upper()
+            if new_college_code and new_college_code != old_college_code:
+                cursor.execute("UPDATE programs SET college_code=? WHERE college_code=?", (new_college_code, old_college_code))
+                self.conn.commit()
+
+            # Disconnect the handler to avoid duplicate connections
+            self.ui.AddCo.clicked.disconnect()
+            self.ui.AddCo.clicked.connect(self.AddCollege)
+
+        # Temporarily override AddCo button
+        self.ui.AddCo.clicked.disconnect()
+        self.ui.AddCo.clicked.connect(lambda: [update_programs_with_new_college_code(), self.AddCollege()])
+
+
 
     def DeleteCollege(self):
         selected_row = self.ui.COLLEGETABLE.currentRow()
@@ -568,6 +587,7 @@ class StudentSystem(QMainWindow):
 
         self.ui.AddProg.clicked.disconnect()
         self.ui.AddProg.clicked.connect(lambda: [update_students_with_new_code(), self.AddProgram()])
+
 
     def DeleteProgram(self):
         selected_row = self.ui.COLLEGETABLE_2.currentRow()
