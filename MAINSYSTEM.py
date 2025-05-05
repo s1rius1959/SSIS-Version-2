@@ -16,6 +16,7 @@ class StudentSystem(QMainWindow):
         
         self.conn = sqlite3.connect(DB_FILE)
         self.create_tables()
+        
        
 
         self.Program_Code = set()
@@ -68,6 +69,10 @@ class StudentSystem(QMainWindow):
 
     def create_tables(self):
         cursor = self.conn.cursor()
+
+        # Enable foreign key support
+        cursor.execute("PRAGMA foreign_keys = ON")
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS colleges (
                 code TEXT PRIMARY KEY,
@@ -79,7 +84,8 @@ class StudentSystem(QMainWindow):
                 code TEXT PRIMARY KEY,
                 name TEXT,
                 college_code TEXT,
-                FOREIGN KEY (college_code) REFERENCES colleges(code) ON UPDATE CASCADE ON DELETE CASCADE
+                FOREIGN KEY (college_code) REFERENCES colleges(code) 
+                ON DELETE SET NULL ON UPDATE CASCADE
             )
         """)
         cursor.execute("""
@@ -90,7 +96,8 @@ class StudentSystem(QMainWindow):
                 year_level TEXT,
                 gender TEXT,
                 program_code TEXT,
-                FOREIGN KEY (program_code) REFERENCES programs(code) ON UPDATE CASCADE ON DELETE CASCADE
+                FOREIGN KEY (program_code) REFERENCES programs(code)
+                ON DELETE SET NULL ON UPDATE CASCADE
             )
         """)
         self.conn.commit()
@@ -126,6 +133,10 @@ class StudentSystem(QMainWindow):
 
         self.ui.NextProgramButton.clicked.connect(self.NextProgramPage)
         self.ui.PrevProgramButton.clicked.connect(self.PrevProgramPage)
+    
+    
+
+        self.conn.commit()
 
 
 
@@ -167,14 +178,30 @@ class StudentSystem(QMainWindow):
         self.ui.StudentTable.setSortingEnabled(False)
         self.ui.StudentTable.setRowCount(0)
         cursor = self.conn.cursor()
+        
+        # Get all students first
         cursor.execute("SELECT * FROM students")
         all_students = cursor.fetchall()
-
+        
+        # Calculate total students count
+        total_students = len(all_students)
+        
+        # Valid Pagination
+        max_page = (total_students - 1) // self.students_per_page if total_students > 0 else 0
+        if self.current_student_page > max_page:
+            self.current_student_page = max_page
+        if self.current_student_page < 0:
+            self.current_student_page = 0
+        
+        # Calculate start and end indices for current page
         start = self.current_student_page * self.students_per_page
         end = start + self.students_per_page
-        paginated_students = all_students[start:end]
-
-        for row_index, row_data in enumerate(paginated_students):
+        
+        # Get only the students for the current page
+        current_page_students = all_students[start:end]
+        
+        # Populate the table with current page students
+        for row_index, row_data in enumerate(current_page_students):
             self.ui.StudentTable.insertRow(row_index)
             for col_index, data in enumerate(row_data):
                 self.ui.StudentTable.setItem(row_index, col_index, QTableWidgetItem(str(data)))
@@ -201,6 +228,14 @@ class StudentSystem(QMainWindow):
         if selectedrow < 0:
             QMessageBox.warning(self, "Error", "Please select a student to edit.")
             return
+        
+        reply = QMessageBox.information(self, "Edit Student", 
+                                        "You can edit the student details and click 'Update Student' to save changes.",
+                                        QMessageBox.Ok | QMessageBox.No) 
+        if reply == QMessageBox.No:
+            return
+                
+        
 
         student_id = self.ui.StudentTable.item(selectedrow, 0).text()
 
@@ -211,13 +246,69 @@ class StudentSystem(QMainWindow):
         self.ui.Yrlvlbox.setCurrentText(self.ui.StudentTable.item(selectedrow, 3).text())
         self.ui.genderbox.setCurrentText(self.ui.StudentTable.item(selectedrow, 4).text())
         self.ui.prcComboBox.setCurrentText(self.ui.StudentTable.item(selectedrow, 5).text())
+        
+        # Set a flag or store the original ID for proper update
+        self.editing_student_id = student_id
+        
+        # Change the Add button text to indicate edit mode
+        self.ui.AddSt.setText("Update")
+        
+        # Temporarily disconnect and reconnect with different function
+        self.ui.AddSt.clicked.disconnect()
+        self.ui.AddSt.clicked.connect(self.UpdateStudent)
 
-        # Delete student for re-add
+    def UpdateStudent(self):
+        # This function handles the update operation after Edit button was pressed
+        id = self.ui.IDnoBox.text().strip()
+        fname = self.ui.FristNbox.text().strip()
+        lname = self.ui.LastNbox.text().strip()
+        yearlevel = self.ui.Yrlvlbox.currentText().strip()
+        gender = self.ui.genderbox.currentText().strip()
+        code = self.ui.prcComboBox.currentText().strip()
+
+        if not id or not fname or not lname or code == "Please Select" or yearlevel == "Please Select" or gender == "Please Select":
+            QMessageBox.warning(self, "Input Error", "All fields must be filled.")
+            return
+
+        if not self.studentidformat(id):
+            QMessageBox.warning(self, "Input Error", "Invalid Student ID format. Must be YYYY-NNNN.")
+            return
+
+        if not self.studentnameformat(fname) or not self.studentnameformat(lname):
+            QMessageBox.warning(self, "Input Error", "Names must contain only letters and spaces.")
+            return
+
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM students WHERE id=?", (student_id,))
-        self.conn.commit()
+        try:
+            # If the ID hasn't changed, just update the record
+            if id == self.editing_student_id:
+                cursor.execute("""
+                    UPDATE students 
+                    SET first_name=?, last_name=?, year_level=?, gender=?, program_code=?
+                    WHERE id=?
+                """, (fname, lname, yearlevel, gender, code, id))
+            else:
+                # If ID has changed, delete old record and insert new one
+                cursor.execute("DELETE FROM students WHERE id=?", (self.editing_student_id,))
+                cursor.execute("""
+                    INSERT INTO students (id, first_name, last_name, year_level, gender, program_code)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (id, fname, lname, yearlevel, gender, code))
+                
+            self.conn.commit()
+            QMessageBox.information(self, "Success", "Student updated successfully.")
+            
+            # Reset the edit mode
+            self.ui.AddSt.setText("Add Student")
+            self.ui.AddSt.clicked.disconnect()
+            self.ui.AddSt.clicked.connect(self.AddStudent)
+            self.editing_student_id = None
+            
+            self.LoadStudent()
+            self.ClearStudentInputs()
+        except sqlite3.IntegrityError as e:
+            QMessageBox.warning(self, "Database Error", f"Error updating student: {str(e)}")
 
-        self.ui.StudentTable.removeRow(selectedrow)
 
     def DeleteStudent(self):
         selectedrow = self.ui.StudentTable.currentRow()
@@ -227,13 +318,20 @@ class StudentSystem(QMainWindow):
         
         student_id = self.ui.StudentTable.item(selectedrow, 0).text()
 
+        reply = QMessageBox.question(self, "Confirm Deletion", 
+                                  "Are you sure you want to delete this student?", 
+                                  QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.No:
+            return
+
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM students WHERE id=?", (student_id,))
-        self.conn.commit()
-
-        self.ui.StudentTable.removeRow(selectedrow)
-        QMessageBox.information(self, "Success", "Student deleted successfully.")
-
+        try:
+            cursor.execute("DELETE FROM students WHERE id=?", (student_id,))
+            self.conn.commit()
+            QMessageBox.information(self, "Success", "Student deleted successfully.")
+            self.LoadStudent()
+        except sqlite3.Error as e:
+            QMessageBox.warning(self, "Database Error", f"Error deleting student: {str(e)}")
     def SearchStudent(self):
         search_text = self.ui.Searchbybox.text().strip()
         if not search_text:
@@ -294,6 +392,14 @@ class StudentSystem(QMainWindow):
         self.ui.genderbox.setCurrentIndex(0)
         self.ui.prcComboBox.setCurrentIndex(0)
 
+        # Reset the Add Button if it was in edit mode
+        if hasattr(self, 'editing_student_id') and self.editing_student_id:
+            self.ui.AddSt.setText("Add Student")
+            self.ui.AddSt.clicked.disconnect()
+            self.ui.AddSt.clicked.connect(self.AddStudent)
+            self.editing_student_id = None
+           
+
     def studentidformat(self, student_id):
         return bool(re.match(r'^\d{4}-\d{4}$', student_id))
 
@@ -326,24 +432,36 @@ class StudentSystem(QMainWindow):
         except sqlite3.IntegrityError:
             QMessageBox.warning(self, "Duplicate Error", "College Code already exists.")
 
-    def LoadCollege(self):
+    def LoadCollege(self):  
         self.ui.COLLEGETABLE.setSortingEnabled(False)
         self.ui.COLLEGETABLE.setRowCount(0)
         self.College_Code.clear()
 
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM colleges")
-        all_colleges = cursor.fetchall()
-
+        cursor.execute("SELECT COUNT(*) FROM colleges")
+        total_colleges = cursor.fetchone()[0]
+        
+        # Calculate valid pagination
+        max_page = (total_colleges - 1) // self.colleges_per_page if total_colleges > 0 else 0
+        if self.current_college_page > max_page:
+            self.current_college_page = max_page
+        if self.current_college_page < 0:
+            self.current_college_page = 0
+            
         start = self.current_college_page * self.colleges_per_page
-        end = start + self.colleges_per_page
-        paginated_colleges = all_colleges[start:end]
+        cursor.execute("SELECT * FROM colleges LIMIT ? OFFSET ?", 
+                     (self.colleges_per_page, start))
 
-        for row_index, row_data in enumerate(paginated_colleges):
+        for row_index, row_data in enumerate(cursor.fetchall()):
             self.ui.COLLEGETABLE.insertRow(row_index)
             for col_index, data in enumerate(row_data):
                 self.ui.COLLEGETABLE.setItem(row_index, col_index, QTableWidgetItem(str(data)))
             self.College_Code.add(row_data[0])
+
+        # Load all college codes for combo boxes
+        cursor.execute("SELECT code FROM colleges")
+        for code in cursor.fetchall():
+            self.College_Code.add(code[0])
 
         self.combo_boxes()
         self.ui.COLLEGETABLE.setSortingEnabled(True)
@@ -367,34 +485,76 @@ class StudentSystem(QMainWindow):
         if selected_row < 0:
             QMessageBox.warning(self, "Error", "Please select a College to edit.")
             return
-
-        old_college_code = self.ui.COLLEGETABLE.item(selected_row, 0).text()
+        
+        college_code = self.ui.COLLEGETABLE.item(selected_row, 0).text()
+        college_name = self.ui.COLLEGETABLE.item(selected_row, 1).text()
+        
+        reply = QMessageBox.information(self, "Edit College", 
+                                        "You can edit the college details and click 'Update College' to save changes.",
+                                        QMessageBox.Ok | QMessageBox.No) 
+        if reply == QMessageBox.No:
+            return
 
         # Load existing values into input fields
-        self.ui.AddCCodeBox.setText(old_college_code)
-        self.ui.CollegeNbox.setText(self.ui.COLLEGETABLE.item(selected_row, 1).text())
+        self.ui.AddCCodeBox.setText(college_code)
+        self.ui.CollegeNbox.setText(college_name)
+        
+        # Set edit mode
+        self.editing_college_code = college_code
+        self.ui.AddCo.setText("Update")
+        
+        # Temporarily change button action
+        self.ui.AddCo.clicked.disconnect()
+        self.ui.AddCo.clicked.connect(self.UpdateCollege)
 
-        # Delete the old college record
+    def UpdateCollege(self):
+        new_code = self.ui.AddCCodeBox.text().strip().upper()
+        new_name = self.ui.CollegeNbox.text().strip()
+
+        if not new_code or not new_name:
+            QMessageBox.warning(self, "Input Error", "All fields must be filled.")
+            return
+        
+        if not new_code.isalpha():
+            QMessageBox.warning(self, "Input Error", "College Code must be letters only.")
+            return
+
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM colleges WHERE code=?", (old_college_code,))
-        self.conn.commit()
+        try:
+            # Only check for duplicate if the code was changed
+            if new_code != self.editing_college_code:
+                cursor.execute("SELECT 1 FROM colleges WHERE code=?", (new_code,))
+                if cursor.fetchone():
+                    QMessageBox.warning(self, "Duplicate Error", "College Code already exists.")
+                    return
 
-        self.ui.COLLEGETABLE.removeRow(selected_row)
-
-        # Set up Add button to also update programs
-        def update_programs_with_new_college_code():
-            new_college_code = self.ui.AddCCodeBox.text().strip().upper()
-            if new_college_code and new_college_code != old_college_code:
-                cursor.execute("UPDATE programs SET college_code=? WHERE college_code=?", (new_college_code, old_college_code))
-                self.conn.commit()
-
-            # Disconnect the handler to avoid duplicate connections
+            # Update the college record
+            cursor.execute("UPDATE colleges SET code=?, name=? WHERE code=?", 
+                        (new_code, new_name, self.editing_college_code))
+            
+            # If code changed, update all programs referencing this college
+            if new_code != self.editing_college_code:
+                cursor.execute("UPDATE programs SET college_code=? WHERE college_code=?", 
+                            (new_code, self.editing_college_code))
+            
+            self.conn.commit()
+            QMessageBox.information(self, "Success", "College updated successfully.")
+            
+            # Reset edit mode
+            self.ui.AddCo.setText("Add College")
             self.ui.AddCo.clicked.disconnect()
             self.ui.AddCo.clicked.connect(self.AddCollege)
-
-        # Temporarily override AddCo button
-        self.ui.AddCo.clicked.disconnect()
-        self.ui.AddCo.clicked.connect(lambda: [update_programs_with_new_college_code(), self.AddCollege()])
+            self.editing_college_code = None
+            
+            # Refresh all tables
+            self.LoadCollege()
+            self.LoadProgram()
+            self.LoadStudent()
+            self.ClearCollegeInputs()
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            QMessageBox.warning(self, "Database Error", f"Error updating college: {str(e)}")
 
 
 
@@ -406,35 +566,38 @@ class StudentSystem(QMainWindow):
 
         college_code = self.ui.COLLEGETABLE.item(selected_row, 0).text()
 
-        reply = QMessageBox.question(self, "Confirm Deletion", "Are you sure you want to delete this College and its Programs?", QMessageBox.Yes | QMessageBox.No)
+        reply = QMessageBox.question(
+            self, 
+            "Confirm Deletion", 
+            "Are you sure you want to delete this College? This will set all programs' college code to NULL.",
+            QMessageBox.Yes | QMessageBox.No
+        )
         if reply == QMessageBox.No:
             return
 
         cursor = self.conn.cursor()
-
-        # Step 1: Get all programs under this college
-        cursor.execute("SELECT code FROM programs WHERE college_code=?", (college_code,))
-        programs = cursor.fetchall()
-        program_codes = [row[0] for row in programs]
-
-        # Step 2: Update students who are in those programs
-        for pcode in program_codes:
-            cursor.execute("UPDATE students SET program_code='NONE' WHERE program_code=?", (pcode,))
-        self.conn.commit()
-
-        # Step 3: Delete all programs under this college
-        cursor.execute("DELETE FROM programs WHERE college_code=?", (college_code,))
-        self.conn.commit()
-
-        # Step 4: Delete the college itself
-        cursor.execute("DELETE FROM colleges WHERE code=?", (college_code,))
-        self.conn.commit()
-
-        self.LoadCollege()
-        self.LoadProgram()
-        self.LoadStudent()
-
-        QMessageBox.information(self, "Success", "College deleted along with its Programs, and students updated.")
+        try:
+            # First set all programs' college_code to NULL
+            cursor.execute("UPDATE programs SET college_code=NULL WHERE college_code=?", (college_code,))
+            
+            # Then delete the college
+            cursor.execute("DELETE FROM colleges WHERE code=?", (college_code,))
+            
+            self.conn.commit()
+            
+            QMessageBox.information(
+                self, 
+                "Success", 
+                "College deleted successfully. Associated programs now have no college."
+            )
+            
+            self.LoadCollege()
+            self.LoadProgram()
+            self.LoadStudent()
+            
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            QMessageBox.warning(self, "Database Error", f"Error: {str(e)}")
 
     def SearchCollege(self):
         search_text = self.ui.Searchbox.text().strip()
@@ -488,7 +651,12 @@ class StudentSystem(QMainWindow):
     def ClearCollegeInputs(self):
         self.ui.AddCCodeBox.clear()
         self.ui.CollegeNbox.clear()
-
+    
+        if hasattr(self, 'editing_college_code') and self.editing_college_code:
+            self.ui.AddCo.setText("Add College")
+            self.ui.AddCo.clicked.disconnect()
+            self.ui.AddCo.clicked.connect(self.AddCollege)
+            self.editing_college_code = None
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # PROGRAM METHODS
 
@@ -513,6 +681,8 @@ class StudentSystem(QMainWindow):
             self.ClearProgramInputs()
         except sqlite3.IntegrityError:
             QMessageBox.warning(self, "Duplicate Error", "Program Code already exists.")
+        except sqlite3.Error as e:
+            QMessageBox.warning(self, "Database Error", f"Error adding program: {str(e)}")
 
     def LoadProgram(self):
         self.ui.COLLEGETABLE_2.setSortingEnabled(False)
@@ -560,33 +730,87 @@ class StudentSystem(QMainWindow):
             QMessageBox.warning(self, "Error", "Please select a Program to edit.")
             return
 
-        old_program_code = self.ui.COLLEGETABLE_2.item(selected_row, 0).text()
+        program_code = self.ui.COLLEGETABLE_2.item(selected_row, 0).text()
+        program_name = self.ui.COLLEGETABLE_2.item(selected_row, 1).text()
+        college_code = self.ui.COLLEGETABLE_2.item(selected_row, 2).text()
+        
+        reply = QMessageBox.information(self, "Edit Program", 
+                                        "You can edit the program details and click 'Update Program' to save changes.",
+                                        QMessageBox.Ok | QMessageBox.No) 
+        if reply == QMessageBox.No:
+            return
 
         # Load current values into the input fields
-        self.ui.PrCodeBox.setText(old_program_code)
-        self.ui.ProgNbox.setText(self.ui.COLLEGETABLE_2.item(selected_row, 1).text())
-        self.ui.ccComboBox.setCurrentText(self.ui.COLLEGETABLE_2.item(selected_row, 2).text())
+        self.ui.PrCodeBox.setText(program_code)
+        self.ui.ProgNbox.setText(program_name)
+        self.ui.ccComboBox.setCurrentText(college_code if college_code else "Please Select")
+        
+        # Set edit mode
+        self.editing_program_code = program_code
+        self.ui.AddProg.setText("Update")
+        
+        # Temporarily change button action
+        self.ui.AddProg.clicked.disconnect()
+        self.ui.AddProg.clicked.connect(self.UpdateProgram)
 
-        # Remove the program row from the database
+    def UpdateProgram(self):
+        new_code = self.ui.PrCodeBox.text().strip()
+        name = self.ui.ProgNbox.text().strip()
+        college_code = self.ui.ccComboBox.currentText().strip()
+        
+        if college_code == "Please Select":
+            college_code = None
+
+        if not new_code or not name:
+            QMessageBox.warning(self, "Input Error", "Program code and name must be filled.")
+            return
+                
+        if not new_code.isalpha():
+            QMessageBox.warning(self, "Input Error", "Program Code must be letters only.")
+            return
+
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM programs WHERE code=?", (old_program_code,))
-        self.conn.commit()
-
-        self.ui.COLLEGETABLE_2.removeRow(selected_row)
-
-        # Connect the Add button to update the students when new program is added
-        def update_students_with_new_code():
-            new_program_code = self.ui.PrCodeBox.text().strip()
-            if new_program_code and new_program_code != old_program_code:
+        try: 
+            if new_code != self.editing_program_code:
+                # Only check for duplicates if the code is being changed
+                cursor.execute("SELECT 1 FROM programs WHERE code=?", (new_code,))
+                if cursor.fetchone():
+                    raise sqlite3.IntegrityError("Program code already exists")
+                
+                # Update the program record
+                cursor.execute("UPDATE programs SET code=?, name=?, college_code=? WHERE code=?", 
+                            (new_code, name, college_code, self.editing_program_code))
+                
+                # Update the program_code in students table
                 cursor.execute("UPDATE students SET program_code=? WHERE program_code=?", 
-                            (new_program_code, old_program_code))
-                self.conn.commit()
-            # Disconnect after update to prevent duplicate binding
+                            (new_code, self.editing_program_code))
+            else:
+                # Only update name and college if code didn't change
+                cursor.execute("UPDATE programs SET name=?, college_code=? WHERE code=?", 
+                            (name, college_code, new_code))
+                
+            # Commit the transaction
+            self.conn.commit()
+            
+            QMessageBox.information(self, "Success", "Program updated successfully.")
+            
+            # Reset edit mode
+            self.ui.AddProg.setText("Add Program")
             self.ui.AddProg.clicked.disconnect()
             self.ui.AddProg.clicked.connect(self.AddProgram)
-
-        self.ui.AddProg.clicked.disconnect()
-        self.ui.AddProg.clicked.connect(lambda: [update_students_with_new_code(), self.AddProgram()])
+            self.editing_program_code = None
+            
+            # Refresh all tables that might be affected
+            self.LoadProgram()
+            self.LoadStudent()
+            self.ClearProgramInputs()
+            
+        except sqlite3.IntegrityError as e:
+            self.conn.rollback()
+            QMessageBox.warning(self, "Duplicate Error", "Program code already exists.")
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            QMessageBox.warning(self, "Database Error", f"Error updating program: {str(e)}")
 
 
     def DeleteProgram(self):
@@ -597,22 +821,43 @@ class StudentSystem(QMainWindow):
 
         program_code = self.ui.COLLEGETABLE_2.item(selected_row, 0).text()
 
-        reply = QMessageBox.question(self, "Confirm Deletion", "Are you sure you want to delete this Program?", QMessageBox.Yes | QMessageBox.No)
+        reply = QMessageBox.question(
+            self, 
+            "Confirm Deletion", 
+            "Are you sure you want to delete this Program? All students in this program will have their program set to NULL.",
+            QMessageBox.Yes | QMessageBox.No
+        )
         if reply == QMessageBox.No:
             return
 
         cursor = self.conn.cursor()
-
-        cursor.execute("UPDATE students SET program_code='NONE' WHERE program_code=?", (program_code,))
-        self.conn.commit()
-
-        cursor.execute("DELETE FROM programs WHERE code=?", (program_code,))
-        self.conn.commit()
-
-        self.LoadProgram()
-        self.LoadStudent()
-
-        QMessageBox.information(self, "Success", "Program deleted and students updated.")
+        try:
+            # Begin transaction
+            self.conn.execute("BEGIN TRANSACTION")
+            
+            # First update all students' program_code to NULL
+            cursor.execute("UPDATE students SET program_code=NULL WHERE program_code=?", (program_code,))
+            
+            # Then delete the program
+            cursor.execute("DELETE FROM programs WHERE code=?", (program_code,))
+            
+            # Commit the transaction
+            self.conn.commit()
+            
+            QMessageBox.information(
+                self, 
+                "Success", 
+                "Program deleted successfully. Associated students now have no program."
+            )
+            
+            # Refresh all tables
+            self.LoadProgram()
+            self.LoadStudent()
+            
+        except sqlite3.Error as e:
+            # Rollback if any error occurs
+            self.conn.rollback()
+            QMessageBox.warning(self, "Database Error", f"Error deleting program: {str(e)}")
 
     def SearchProgram(self):
         search_text = self.ui.Searchbybox_2.text().strip()
