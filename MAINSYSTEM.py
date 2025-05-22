@@ -51,13 +51,13 @@ class StudentSystem(QMainWindow):
         self.combo_boxes()
         #Pagination Variables
         self.current_student_page = 0
-        self.students_per_page = 10  
+        self.students_per_page = 30  
 
         self.current_college_page = 0
-        self.colleges_per_page = 10
+        self.colleges_per_page = 30
 
         self.current_program_page = 0
-        self.programs_per_page = 10
+        self.programs_per_page = 30
         
         self.LoadStudent()
         self.LoadCollege()
@@ -418,9 +418,10 @@ class StudentSystem(QMainWindow):
         if not collegecode or not collegename:
             QMessageBox.warning(self, "Input Error", "All fields must be filled.")
             return
-        if not collegecode.isalpha():
-            QMessageBox.warning(self, "Input Error", "College Code must be letters only.")
+        if not collegecode.isalnum():
+            QMessageBox.warning(self, "Input Error", "College Code must be letters and numbers only.")
             return
+
 
         cursor = self.conn.cursor()
         try:
@@ -515,8 +516,8 @@ class StudentSystem(QMainWindow):
             QMessageBox.warning(self, "Input Error", "All fields must be filled.")
             return
         
-        if not new_code.isalpha():
-            QMessageBox.warning(self, "Input Error", "College Code must be letters only.")
+        if not new_code.isalnum():
+            QMessageBox.warning(self, "Input Error", "College Code must be letters and numbers only.")
             return
 
         cursor = self.conn.cursor()
@@ -668,8 +669,8 @@ class StudentSystem(QMainWindow):
         if not programcode or not programname or collegecode == "Please Select":
             QMessageBox.warning(self, "Input Error", "All fields must be filled.")
             return
-        if not programcode.isalpha():
-            QMessageBox.warning(self, "Input Error", "Program Code must be letters only.")
+        if not programcode.isalnum():
+            QMessageBox.warning(self, "Input Error", "Program Code must be letters and numbers only.")
             return
 
         cursor = self.conn.cursor()
@@ -691,20 +692,26 @@ class StudentSystem(QMainWindow):
         self.ProgramCollegeMap.clear()
 
         cursor = self.conn.cursor()
+
+        # Load ALL program codes for dropdown
+        cursor.execute("SELECT code, college_code FROM programs")
+        for code, college_code in cursor.fetchall():
+            self.Program_Code.add(code)
+            self.ProgramCollegeMap[code] = college_code
+
+        # Load only paginated data for table display
         cursor.execute("SELECT * FROM programs")
         all_programs = cursor.fetchall()
-
         start = self.current_program_page * self.programs_per_page 
         end = start + self.programs_per_page
         paginated_programs = all_programs[start:end]
 
+        self.ui.COLLEGETABLE_2.setRowCount(0)
         for row_index, row_data in enumerate(paginated_programs):
             self.ui.COLLEGETABLE_2.insertRow(row_index)
             for col_index, data in enumerate(row_data):
                 self.ui.COLLEGETABLE_2.setItem(row_index, col_index, QTableWidgetItem(str(data)))
-            if row_data:
-                self.Program_Code.add(row_data[0])
-                self.ProgramCollegeMap[row_data[0]] = row_data[2]
+
 
         self.combo_boxes()
         self.ui.COLLEGETABLE_2.setSortingEnabled(True)
@@ -765,8 +772,8 @@ class StudentSystem(QMainWindow):
             QMessageBox.warning(self, "Input Error", "Program code and name must be filled.")
             return
                 
-        if not new_code.isalpha():
-            QMessageBox.warning(self, "Input Error", "Program Code must be letters only.")
+        if not new_code.isalnum():
+            QMessageBox.warning(self, "Input Error", "Program Code must be letters and numbers only.")
             return
 
         cursor = self.conn.cursor()
