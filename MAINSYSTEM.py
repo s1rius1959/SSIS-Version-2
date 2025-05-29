@@ -178,36 +178,24 @@ class StudentSystem(QMainWindow):
         self.ui.StudentTable.setSortingEnabled(False)
         self.ui.StudentTable.setRowCount(0)
         cursor = self.conn.cursor()
-        
-        # Get all students first
         cursor.execute("SELECT * FROM students")
         all_students = cursor.fetchall()
-        
-        # Calculate total students count
         total_students = len(all_students)
-        
-        # Valid Pagination
         max_page = (total_students - 1) // self.students_per_page if total_students > 0 else 0
-        if self.current_student_page > max_page:
-            self.current_student_page = max_page
-        if self.current_student_page < 0:
-            self.current_student_page = 0
-        
-        # Calculate start and end indices for current page
+        self.current_student_page = min(max(self.current_student_page, 0), max_page)
         start = self.current_student_page * self.students_per_page
         end = start + self.students_per_page
-        
-        # Get only the students for the current page
         current_page_students = all_students[start:end]
-        
-        # Populate the table with current page students
+
         for row_index, row_data in enumerate(current_page_students):
             self.ui.StudentTable.insertRow(row_index)
             for col_index, data in enumerate(row_data):
                 self.ui.StudentTable.setItem(row_index, col_index, QTableWidgetItem(str(data)))
-        
+
         self.ui.StudentTable.setSortingEnabled(True)
         self.ui.StudentTable.horizontalHeader().setSortIndicator(-1, 0)
+        total_pages = max(1, (total_students + self.students_per_page - 1) // self.students_per_page)
+        self.ui.StudentPageLabel.setText(f"Page {self.current_student_page + 1} of {total_pages}")
     
     def NextStudentPage(self):
         cursor = self.conn.cursor()
@@ -433,25 +421,17 @@ class StudentSystem(QMainWindow):
         except sqlite3.IntegrityError:
             QMessageBox.warning(self, "Duplicate Error", "College Code already exists.")
 
-    def LoadCollege(self):  
+    def LoadCollege(self):
         self.ui.COLLEGETABLE.setSortingEnabled(False)
         self.ui.COLLEGETABLE.setRowCount(0)
         self.College_Code.clear()
-
         cursor = self.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM colleges")
         total_colleges = cursor.fetchone()[0]
-        
-        # Calculate valid pagination
         max_page = (total_colleges - 1) // self.colleges_per_page if total_colleges > 0 else 0
-        if self.current_college_page > max_page:
-            self.current_college_page = max_page
-        if self.current_college_page < 0:
-            self.current_college_page = 0
-            
+        self.current_college_page = min(max(self.current_college_page, 0), max_page)
         start = self.current_college_page * self.colleges_per_page
-        cursor.execute("SELECT * FROM colleges LIMIT ? OFFSET ?", 
-                     (self.colleges_per_page, start))
+        cursor.execute("SELECT * FROM colleges LIMIT ? OFFSET ?", (self.colleges_per_page, start))
 
         for row_index, row_data in enumerate(cursor.fetchall()):
             self.ui.COLLEGETABLE.insertRow(row_index)
@@ -459,7 +439,6 @@ class StudentSystem(QMainWindow):
                 self.ui.COLLEGETABLE.setItem(row_index, col_index, QTableWidgetItem(str(data)))
             self.College_Code.add(row_data[0])
 
-        # Load all college codes for combo boxes
         cursor.execute("SELECT code FROM colleges")
         for code in cursor.fetchall():
             self.College_Code.add(code[0])
@@ -467,6 +446,8 @@ class StudentSystem(QMainWindow):
         self.combo_boxes()
         self.ui.COLLEGETABLE.setSortingEnabled(True)
         self.ui.COLLEGETABLE.horizontalHeader().setSortIndicator(-1, 0)
+        total_pages = max(1, (total_colleges + self.colleges_per_page - 1) // self.colleges_per_page)
+        self.ui.CollegePageLabel.setText(f"Page {self.current_college_page + 1} of {total_pages}")
     def NextCollegePage(self):
         cursor = self.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM colleges")
@@ -692,17 +673,15 @@ class StudentSystem(QMainWindow):
         self.ProgramCollegeMap.clear()
 
         cursor = self.conn.cursor()
-
-        # Load ALL program codes for dropdown
         cursor.execute("SELECT code, college_code FROM programs")
         for code, college_code in cursor.fetchall():
             self.Program_Code.add(code)
             self.ProgramCollegeMap[code] = college_code
 
-        # Load only paginated data for table display
         cursor.execute("SELECT * FROM programs")
         all_programs = cursor.fetchall()
-        start = self.current_program_page * self.programs_per_page 
+        total_programs = len(all_programs)
+        start = self.current_program_page * self.programs_per_page
         end = start + self.programs_per_page
         paginated_programs = all_programs[start:end]
 
@@ -712,10 +691,11 @@ class StudentSystem(QMainWindow):
             for col_index, data in enumerate(row_data):
                 self.ui.COLLEGETABLE_2.setItem(row_index, col_index, QTableWidgetItem(str(data)))
 
-
         self.combo_boxes()
         self.ui.COLLEGETABLE_2.setSortingEnabled(True)
         self.ui.COLLEGETABLE_2.horizontalHeader().setSortIndicator(-1, 0)
+        total_pages = max(1, (total_programs + self.programs_per_page - 1) // self.programs_per_page)
+        self.ui.ProgramPageLabel.setText(f"Page {self.current_program_page + 1} of {total_pages}")
     
     def NextProgramPage(self):
         cursor = self.conn.cursor()

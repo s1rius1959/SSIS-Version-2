@@ -548,6 +548,32 @@ border-radius: 10px;</string>
         <string>Refresh</string>
        </property>
       </widget>
+      <widget class="QLabel" name="StudentPageLabel">
+       <property name="geometry">
+        <rect>
+         <x>282</x>
+         <y>47</y>
+         <width>91</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>TextLabel</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_3">
+       <property name="geometry">
+        <rect>
+         <x>252</x>
+         <y>51</y>
+         <width>40</width>
+         <height>13</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Page:</string>
+       </property>
+      </widget>
      </widget>
      <widget class="QFrame" name="AddStudent">
       <property name="geometry">
@@ -1436,6 +1462,32 @@ border-radius: 10px;</string>
         <string>Refresh</string>
        </property>
       </widget>
+      <widget class="QLabel" name="label_2">
+       <property name="geometry">
+        <rect>
+         <x>256</x>
+         <y>52</y>
+         <width>40</width>
+         <height>13</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Page:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="CollegePageLabel">
+       <property name="geometry">
+        <rect>
+         <x>286</x>
+         <y>48</y>
+         <width>131</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>TextLabel</string>
+       </property>
+      </widget>
      </widget>
      <widget class="QFrame" name="SIDEADD_3">
       <property name="geometry">
@@ -2156,6 +2208,32 @@ border-radius: 10px;</string>
        </property>
        <property name="text">
         <string>Refresh</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="ProgramPageLabel">
+       <property name="geometry">
+        <rect>
+         <x>280</x>
+         <y>46</y>
+         <width>141</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>TextLabel</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label">
+       <property name="geometry">
+        <rect>
+         <x>250</x>
+         <y>50</y>
+         <width>40</width>
+         <height>13</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Page:</string>
        </property>
       </widget>
      </widget>
